@@ -62,7 +62,7 @@ installation, which is covered in INSTALL.txt in this same directory.)
    Meaning, if there are 6 pages of results, visiting the item for the first
    time will start with the 6th page of results instead of the 1st.
 
-   {% autopaginate object_list %}
+   {% autopaginate object_list backwards %}
 
    {% autopaginate object_list 10 backwards %}
 

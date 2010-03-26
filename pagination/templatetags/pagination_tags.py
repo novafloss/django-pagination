@@ -96,13 +96,12 @@ class AutoPaginateNode(template.Node):
             paginate_by = self.paginate_by.resolve(context)
         paginator = Paginator(value, paginate_by, self.orphans)
         try:
-            if context['request'].page == None and self.backwards == False:
-                page_number = 1
-            elif context['request'].page == None and self.backwards == True:
-                page_number = paginator.num_pages
-            else:
-                page_number = context['request'].page
-            page_obj = paginator.page(page_number)
+            page_num = context['request'].page
+            if page_num == None and not self.backwards:
+                page_num = 1
+            elif page_num == None and self.backwards:
+                page_num = paginator.num_pages
+            page_obj = paginator.page(page_num)
         except InvalidPage:
             if INVALID_PAGE_RAISES_404:
                 raise Http404('Invalid page requested.  If DEBUG were set to ' +

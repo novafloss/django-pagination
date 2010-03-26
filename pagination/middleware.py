@@ -6,7 +6,7 @@ def get_page(self):
     try:
         return int(self.REQUEST['page'])
     except (KeyError, ValueError, TypeError):
-        return 1
+        return None
 
 class PaginationMiddleware(object):
     """

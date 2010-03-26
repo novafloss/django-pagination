@@ -38,16 +38,23 @@ def do_autopaginate(parser, token):
     if len(split) == 2:
         return AutoPaginateNode(split[1])
     elif len(split) == 3:
-        return AutoPaginateNode(split[1], paginate_by=split[2], 
+        if split[2] == 'backwards':
+            return AutoPaginateNode(split[1], backwards=True)
+        return AutoPaginateNode(split[1], paginate_by=split[2],
             context_var=context_var)
     elif len(split) == 4:
+        orphans = DEFAULT_ORPHANS
+        backwards = False
         try:
             orphans = int(split[3])
         except ValueError:
-            raise template.TemplateSyntaxError(u'Got %s, but expected integer.'
-                % split[3])
+            if split[3] == 'backwards':
+                backwards = True
+            else:
+                raise template.TemplateSyntaxError(u'Got %s, but expected integer.'
+                    % split[3])
         return AutoPaginateNode(split[1], paginate_by=split[2], orphans=orphans,
-            context_var=context_var)
+            context_var=context_var, backwards=backwards)
     else:
         raise template.TemplateSyntaxError('%r tag takes one required ' +
             'argument and one optional argument' % split[0])
@@ -70,7 +77,7 @@ class AutoPaginateNode(template.Node):
         list of available pages, or else the application may seem to be buggy.
     """
     def __init__(self, queryset_var, paginate_by=DEFAULT_PAGINATION,
-        orphans=DEFAULT_ORPHANS, context_var=None):
+        orphans=DEFAULT_ORPHANS, context_var=None, backwards=False):
         self.queryset_var = template.Variable(queryset_var)
         if isinstance(paginate_by, int):
             self.paginate_by = paginate_by
@@ -78,6 +85,7 @@ class AutoPaginateNode(template.Node):
             self.paginate_by = template.Variable(paginate_by)
         self.orphans = orphans
         self.context_var = context_var
+        self.backwards = backwards
 
     def render(self, context):
         key = self.queryset_var.var
@@ -88,7 +96,13 @@ class AutoPaginateNode(template.Node):
             paginate_by = self.paginate_by.resolve(context)
         paginator = Paginator(value, paginate_by, self.orphans)
         try:
-            page_obj = paginator.page(context['request'].page)
+            if context['request'].page == None and self.backwards == False:
+                page_number = 1
+            elif context['request'].page == None and self.backwards == True:
+                page_number = paginator.num_pages
+            else:
+                page_number = context['request'].page
+            page_obj = paginator.page(page_number)
         except InvalidPage:
             if INVALID_PAGE_RAISES_404:
                 raise Http404('Invalid page requested.  If DEBUG were set to ' +

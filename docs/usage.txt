@@ -56,18 +56,34 @@ installation, which is covered in INSTALL.txt in this same directory.)
    Note that this replaces ``object_list`` with the list for the current page, so
    you can iterate over the ``object_list`` like you normally would.
    
-6. Optionally, ``backwards`` may be passed as the last argument to the
-   template tag. Useful when the ``object_list`` is in a reverse chronological
+6. Optionally, a style may be passed as the last argument to the
+   template tag. Options are ``standard``, ``backwards``, ``infinite`` or
+   ``finite``.
+   
+   ``standard`` is the default.
+   
+       {% autopaginate object_list %}
+       {% autopaginate object_list 10 %}
+   
+   ``backwards`` is useful when the ``object_list`` is in a reverse chronological
    order and you'd like to start paginating from the opposite direction.
    Meaning, if there are 6 pages of results, visiting the item for the first
    time will start with the 6th page of results instead of the 1st.
-
-   {% autopaginate object_list backwards %}
-
-   {% autopaginate object_list 10 backwards %}
-
+   
+       {% autopaginate object_list backwards %}
+       {% autopaginate object_list 10 backwards %}
+   
    Note it is still up to you to reverse the ``object_list`` before using
    the ``backwards`` option.
+   
+   ``infinite`` uses the InfinitePaginator subclass from paginator.py and the
+   ``pagination_infinite.html`` paginator, for a twitter like 'more' button.
+   ``finite`` uses the FinitePaginator subclass.
+   
+       {% autopaginate object_list infinite %}
+       {% autopaginate object_list 10 infinite %}
+       {% autopaginate object_list finite %}
+       {% autopaginate object_list 10 finite %}
 
 7. Now you want to display the current page and the available pages, so
    somewhere after having used autopaginate, use the paginate inclusion tag:

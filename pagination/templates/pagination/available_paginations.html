@@ -1,0 +1,11 @@
+{% load i18n %}
+<p>
+{% trans "Number of entries displayed by page:" %}
+{% for pagination in paginations %}
+{% ifequal pagination paginate_by %}
+<span class="pagination current">{{ pagination }}</span>{% if not forloop.last %} | {% endif %}
+{% else %}
+<a class="pagination" href="?pagination={{ pagination }}{{ getvars }}">{{ pagination }}</a>{% if not forloop.last %} | {% endif %}
+{% endifequal%}
+{% endfor %}
+</p>

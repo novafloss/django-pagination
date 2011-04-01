@@ -11,6 +11,7 @@ from django.conf import settings
 register = template.Library()
 
 DEFAULT_PAGINATION = getattr(settings, 'PAGINATION_DEFAULT_PAGINATION', 20)
+DEFAULT_PAGINATION_LIST = getattr(settings, 'PAGINATION_DEFAULT_PAGINATION_LIST', [20, 50, 100])
 DEFAULT_WINDOW = getattr(settings, 'PAGINATION_DEFAULT_WINDOW', 4)
 DEFAULT_ORPHANS = getattr(settings, 'PAGINATION_DEFAULT_ORPHANS', 0)
 INVALID_PAGE_RAISES_404 = getattr(settings,
@@ -86,6 +87,7 @@ class AutoPaginateNode(template.Node):
             paginate_by = self.paginate_by
         else:
             paginate_by = self.paginate_by.resolve(context)
+        paginate_by = context['request'].pagination or paginate_by
         paginator = Paginator(value, paginate_by, self.orphans)
         try:
             page_obj = paginator.page(context['request'].page)
@@ -102,6 +104,7 @@ class AutoPaginateNode(template.Node):
             context[key] = page_obj.object_list
         context['paginator'] = paginator
         context['page_obj'] = page_obj
+        context['paginate_by'] = paginate_by
         return u''
 
 
@@ -225,6 +228,46 @@ def paginate(context, window=DEFAULT_WINDOW, hashtag=''):
     except KeyError, AttributeError:
         return {}
 
+def available_paginations(context):
+    """
+    Renders the ``pagination/available_paginations.html`` template, resulting in a
+    display of all available paginations, given current pagination.
+    
+    Requires one argument, ``context``, which should be a dictionary-like data
+    structure and must contain the following keys:
+    
+    ``paginata_by``
+        The current pagination.
+    
+    This same ``context`` dictionary-like data structure may also include:
+    
+    ``getvars``
+        A dictionary of all of the **GET** parameters in the current request.
+        This is useful to maintain certain types of state, even when requesting
+        a different page.
+        """
+    try:
+        paginate_by = context['paginate_by']
+        to_return = {
+            'MEDIA_URL': settings.MEDIA_URL,
+            'paginate_by': paginate_by,
+            'paginations': DEFAULT_PAGINATION_LIST,
+        }
+        if 'request' in context:
+            getvars = context['request'].GET.copy()
+            if 'pagination' in getvars:
+                del getvars['pagination']
+            if len(getvars.keys()) > 0:
+                to_return['getvars'] = "&%s" % getvars.urlencode()
+            else:
+                to_return['getvars'] = ''
+        return to_return
+    except KeyError, AttributeError:
+        return {}
+
 register.inclusion_tag('pagination/pagination.html', takes_context=True)(
     paginate)
+register.inclusion_tag('pagination/available_paginations.html', takes_context=True)(
+    available_paginations
+)
 register.tag('autopaginate', do_autopaginate)

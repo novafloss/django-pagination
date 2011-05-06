@@ -255,6 +255,8 @@ def available_paginations(context):
         }
         if 'request' in context:
             getvars = context['request'].GET.copy()
+            if 'page' in getvars:
+                del getvars['page']
             if 'pagination' in getvars:
                 del getvars['pagination']
             if len(getvars.keys()) > 0:

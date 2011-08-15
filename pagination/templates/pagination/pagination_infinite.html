@@ -1,0 +1,8 @@
+{% load i18n %}
+<div class="pagination">
+    {% if page_obj.has_next %}
+        <a href="?page={{ page_obj.next_page_number }}{{ getvars }}" class="more"><span>{% trans "more" %}</span></a>
+    {% else %}
+        <span class="disabled more">{% trans "more" %}</span>
+    {% endif %}
+</div>

@@ -147,7 +147,7 @@ class FinitePaginator(InfinitePaginator):
         """
         number = self.validate_number(number)
         # remove the extra item(s) when creating the page
-        page_items = self.object_list[:self.per_page]
+        page_items = self.object_list.all()[number*self.per_page:(number+1)*self.per_page]
         return FinitePage(page_items, number, self)
 
 class FinitePage(InfinitePage):

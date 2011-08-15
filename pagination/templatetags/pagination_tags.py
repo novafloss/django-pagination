@@ -8,6 +8,8 @@ from django.http import Http404
 from django.core.paginator import Paginator, InvalidPage
 from django.conf import settings
 
+from pagination.paginator import FinitePaginator, InfinitePaginator
+
 register = template.Library()
 
 DEFAULT_PAGINATION = getattr(settings, 'PAGINATION_DEFAULT_PAGINATION', 20)
@@ -20,6 +22,7 @@ def do_autopaginate(parser, token):
     """
     Splits the arguments to the autopaginate tag and formats them correctly.
     """
+    styles = ('standard', 'backwards', 'infinite', 'finite')
     split = token.split_contents()
     as_index = None
     context_var = None
@@ -38,16 +41,23 @@ def do_autopaginate(parser, token):
     if len(split) == 2:
         return AutoPaginateNode(split[1])
     elif len(split) == 3:
-        return AutoPaginateNode(split[1], paginate_by=split[2], 
+        if split[2] in styles:
+            return AutoPaginateNode(split[1], style=split[2])
+        return AutoPaginateNode(split[1], paginate_by=split[2],
             context_var=context_var)
     elif len(split) == 4:
+        orphans = DEFAULT_ORPHANS
+        style = None
         try:
             orphans = int(split[3])
         except ValueError:
-            raise template.TemplateSyntaxError(u'Got %s, but expected integer.'
-                % split[3])
-        return AutoPaginateNode(split[1], paginate_by=split[2], orphans=orphans,
-            context_var=context_var)
+            if split[3] in styles:
+                style = split[3]
+            else:
+                raise template.TemplateSyntaxError("Got %s, but expected\
+                    integer or valid style option: %s" % (split[3], styles))
+        return AutoPaginateNode(split[1], paginate_by=split[2],
+            orphans=orphans, context_var=context_var, style=style)
     else:
         raise template.TemplateSyntaxError('%r tag takes one required ' +
             'argument and one optional argument' % split[0])
@@ -70,7 +80,7 @@ class AutoPaginateNode(template.Node):
         list of available pages, or else the application may seem to be buggy.
     """
     def __init__(self, queryset_var, paginate_by=DEFAULT_PAGINATION,
-        orphans=DEFAULT_ORPHANS, context_var=None):
+        orphans=DEFAULT_ORPHANS, context_var=None, style='standard'):
         self.queryset_var = template.Variable(queryset_var)
         if isinstance(paginate_by, int):
             self.paginate_by = paginate_by
@@ -78,6 +88,7 @@ class AutoPaginateNode(template.Node):
             self.paginate_by = template.Variable(paginate_by)
         self.orphans = orphans
         self.context_var = context_var
+        self.style = style
 
     def render(self, context):
         key = self.queryset_var.var
@@ -86,9 +97,19 @@ class AutoPaginateNode(template.Node):
             paginate_by = self.paginate_by
         else:
             paginate_by = self.paginate_by.resolve(context)
-        paginator = Paginator(value, paginate_by, self.orphans)
+        page_num = context['request'].page
+        if self.style in ('standard', 'backwards'):
+            paginator = Paginator(value, paginate_by, self.orphans)
+            if page_num is None and self.style == 'backwards':
+                page_num = paginator.num_pages
+        elif self.style == 'infinite':
+            paginator = InfinitePaginator(value, paginate_by, self.orphans)
+        elif self.style == 'finite':
+            paginator = FinitePaginator(value, paginate_by)
+        if page_num is None:
+            page_num = 1
         try:
-            page_obj = paginator.page(context['request'].page)
+            page_obj = paginator.page(page_num)
         except InvalidPage:
             if INVALID_PAGE_RAISES_404:
                 raise Http404('Invalid page requested.  If DEBUG were set to ' +
@@ -102,6 +123,7 @@ class AutoPaginateNode(template.Node):
             context[key] = page_obj.object_list
         context['paginator'] = paginator
         context['page_obj'] = page_obj
+        context['style'] = self.style
         return u''
 
 
@@ -133,86 +155,98 @@ def paginate(context, window=DEFAULT_WINDOW, hashtag=''):
     try:
         paginator = context['paginator']
         page_obj = context['page_obj']
-        page_range = paginator.page_range
-        # Calculate the record range in the current page for display.
-        records = {'first': 1 + (page_obj.number - 1) * paginator.per_page}
-        records['last'] = records['first'] + paginator.per_page - 1
-        if records['last'] + paginator.orphans >= paginator.count:
-            records['last'] = paginator.count
-        # First and last are simply the first *n* pages and the last *n* pages,
-        # where *n* is the current window size.
-        first = set(page_range[:window])
-        last = set(page_range[-window:])
-        # Now we look around our current page, making sure that we don't wrap
-        # around.
-        current_start = page_obj.number-1-window
-        if current_start < 0:
-            current_start = 0
-        current_end = page_obj.number-1+window
-        if current_end < 0:
-            current_end = 0
-        current = set(page_range[current_start:current_end])
-        pages = []
-        # If there's no overlap between the first set of pages and the current
-        # set of pages, then there's a possible need for elusion.
-        if len(first.intersection(current)) == 0:
-            first_list = list(first)
-            first_list.sort()
-            second_list = list(current)
-            second_list.sort()
-            pages.extend(first_list)
-            diff = second_list[0] - first_list[-1]
-            # If there is a gap of two, between the last page of the first
-            # set and the first page of the current set, then we're missing a
-            # page.
-            if diff == 2:
-                pages.append(second_list[0] - 1)
-            # If the difference is just one, then there's nothing to be done,
-            # as the pages need no elusion and are correct.
-            elif diff == 1:
-                pass
-            # Otherwise, there's a bigger gap which needs to be signaled for
-            # elusion, by pushing a None value to the page list.
+        style = context['style']
+        if style in ('infinite', 'finite'):
+            to_return = {
+                'MEDIA_URL': settings.MEDIA_URL,
+                'page_obj': page_obj,
+                'paginator': paginator,
+                'is_paginated': True, #TODO make last False
+                'style': style,
+            }
+        elif style in ('standard', 'backwards'):
+            page_range = paginator.page_range
+            # Calculate the record range in the current page for display.
+            records = {'first': 1 + (page_obj.number - 1) * paginator.per_page}
+            records['last'] = records['first'] + paginator.per_page - 1
+            if records['last'] + paginator.orphans >= paginator.count:
+                records['last'] = paginator.count
+            # First and last are simply the first *n* pages and the last *n* pages,
+            # where *n* is the current window size.
+            first = set(page_range[:window])
+            last = set(page_range[-window:])
+            # Now we look around our current page, making sure that we don't wrap
+            # around.
+            current_start = page_obj.number-1-window
+            if current_start < 0:
+                current_start = 0
+            current_end = page_obj.number-1+window
+            if current_end < 0:
+                current_end = 0
+            current = set(page_range[current_start:current_end])
+            pages = []
+            # If there's no overlap between the first set of pages and the current
+            # set of pages, then there's a possible need for elusion.
+            if len(first.intersection(current)) == 0:
+                first_list = list(first)
+                first_list.sort()
+                second_list = list(current)
+                second_list.sort()
+                pages.extend(first_list)
+                diff = second_list[0] - first_list[-1]
+                # If there is a gap of two, between the last page of the first
+                # set and the first page of the current set, then we're missing a
+                # page.
+                if diff == 2:
+                    pages.append(second_list[0] - 1)
+                # If the difference is just one, then there's nothing to be done,
+                # as the pages need no elusion and are correct.
+                elif diff == 1:
+                    pass
+                # Otherwise, there's a bigger gap which needs to be signaled for
+                # elusion, by pushing a None value to the page list.
+                else:
+                    pages.append(None)
+                pages.extend(second_list)
             else:
-                pages.append(None)
-            pages.extend(second_list)
-        else:
-            unioned = list(first.union(current))
-            unioned.sort()
-            pages.extend(unioned)
-        # If there's no overlap between the current set of pages and the last
-        # set of pages, then there's a possible need for elusion.
-        if len(current.intersection(last)) == 0:
-            second_list = list(last)
-            second_list.sort()
-            diff = second_list[0] - pages[-1]
-            # If there is a gap of two, between the last page of the current
-            # set and the first page of the last set, then we're missing a 
-            # page.
-            if diff == 2:
-                pages.append(second_list[0] - 1)
-            # If the difference is just one, then there's nothing to be done,
-            # as the pages need no elusion and are correct.
-            elif diff == 1:
-                pass
-            # Otherwise, there's a bigger gap which needs to be signaled for
-            # elusion, by pushing a None value to the page list.
+                unioned = list(first.union(current))
+                unioned.sort()
+                pages.extend(unioned)
+            # If there's no overlap between the current set of pages and the last
+            # set of pages, then there's a possible need for elusion.
+            if len(current.intersection(last)) == 0:
+                second_list = list(last)
+                second_list.sort()
+                diff = second_list[0] - pages[-1]
+                # If there is a gap of two, between the last page of the current
+                # set and the first page of the last set, then we're missing a
+                # page.
+                if diff == 2:
+                    pages.append(second_list[0] - 1)
+                # If the difference is just one, then there's nothing to be done,
+                # as the pages need no elusion and are correct.
+                elif diff == 1:
+                    pass
+                # Otherwise, there's a bigger gap which needs to be signaled for
+                # elusion, by pushing a None value to the page list.
+                else:
+                    pages.append(None)
+                pages.extend(second_list)
             else:
-                pages.append(None)
-            pages.extend(second_list)
+                differenced = list(last.difference(current))
+                differenced.sort()
+                pages.extend(differenced)
+            to_return = {
+                'MEDIA_URL': settings.MEDIA_URL,
+                'pages': pages,
+                'records': records,
+                'page_obj': page_obj,
+                'paginator': paginator,
+                'hashtag': hashtag,
+                'is_paginated': paginator.count > paginator.per_page,
+            }
         else:
-            differenced = list(last.difference(current))
-            differenced.sort()
-            pages.extend(differenced)
-        to_return = {
-            'MEDIA_URL': settings.MEDIA_URL,
-            'pages': pages,
-            'records': records,
-            'page_obj': page_obj,
-            'paginator': paginator,
-            'hashtag': hashtag,
-            'is_paginated': paginator.count > paginator.per_page,
-        }
+            raise template.TemplateSyntaxError("Invalid style type: %s" % style)
         if 'request' in context:
             getvars = context['request'].GET.copy()
             if 'page' in getvars:
@@ -222,7 +256,7 @@ def paginate(context, window=DEFAULT_WINDOW, hashtag=''):
             else:
                 to_return['getvars'] = ''
         return to_return
-    except KeyError, AttributeError:
+    except (KeyError, AttributeError):
         return {}
 
 register.inclusion_tag('pagination/pagination.html', takes_context=True)(

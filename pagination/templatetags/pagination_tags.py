@@ -13,6 +13,7 @@ from pagination.paginator import FinitePaginator, InfinitePaginator
 register = template.Library()
 
 DEFAULT_PAGINATION = getattr(settings, 'PAGINATION_DEFAULT_PAGINATION', 20)
+DEFAULT_PAGINATION_STYLE = getattr(settings, 'PAGINATION_DEFAULT_PAGINATION_STYLE', 'standard')
 DEFAULT_WINDOW = getattr(settings, 'PAGINATION_DEFAULT_WINDOW', 4)
 DEFAULT_ORPHANS = getattr(settings, 'PAGINATION_DEFAULT_ORPHANS', 0)
 INVALID_PAGE_RAISES_404 = getattr(settings,
@@ -80,7 +81,7 @@ class AutoPaginateNode(template.Node):
         list of available pages, or else the application may seem to be buggy.
     """
     def __init__(self, queryset_var, paginate_by=DEFAULT_PAGINATION,
-        orphans=DEFAULT_ORPHANS, context_var=None, style='standard'):
+        orphans=DEFAULT_ORPHANS, context_var=None, style=DEFAULT_PAGINATION_STYLE):
         self.queryset_var = template.Variable(queryset_var)
         if isinstance(paginate_by, int):
             self.paginate_by = paginate_by

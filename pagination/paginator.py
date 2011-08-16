@@ -1,4 +1,7 @@
 from django.core.paginator import Paginator, Page, PageNotAnInteger, EmptyPage
+from django.conf import settings
+
+INFINITE_SKIP_INVALID_PAGE_CHECKS = getattr(settings, 'PAGINATION_INFINITE_SKIP_INVALID_PAGE_CHECKS', False)
 
 class InfinitePaginator(Paginator):
     """
@@ -40,12 +43,14 @@ class InfinitePaginator(Paginator):
         bottom = (number - 1) * self.per_page
         top = bottom + self.per_page
         page_items = self.object_list[bottom:top]
-        # check moved from validate_number
-        if not page_items:
-            if number == 1 and self.allow_empty_first_page:
-                pass
-            else:
-                raise EmptyPage('That page contains no results')
+
+        if not INFINITE_SKIP_INVALID_PAGE_CHECKS:
+            # check moved from validate_number
+            if not page_items:
+                if number == 1 and self.allow_empty_first_page:
+                    pass
+                else:
+                    raise EmptyPage('That page contains no results')
         return InfinitePage(page_items, number, self)
 
     def _get_count(self):

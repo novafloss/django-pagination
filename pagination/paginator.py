@@ -73,6 +73,10 @@ class InfinitePaginator(Paginator):
 
 class InfinitePage(Page):
 
+    def __init__(self, *args, **kwargs):
+        super(InfinitePage, self).__init__(*args, **kwargs)
+        self.cached_has_next = None
+
     def __repr__(self):
         return '<Page %s>' % self.number
 
@@ -80,11 +84,17 @@ class InfinitePage(Page):
         """
         Checks for one more item than last on this page.
         """
+        if self.cached_has_next is not None:
+            return self.cached_has_next
+
         try:
             next_item = self.paginator.object_list[
                 self.number * self.paginator.per_page]
         except IndexError:
+            self.cached_has_next = False
             return False
+
+        self.cached_has_next = True
         return True
 
     def end_index(self):

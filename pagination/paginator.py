@@ -1,4 +1,7 @@
 from django.core.paginator import Paginator, Page, PageNotAnInteger, EmptyPage
+from django.conf import settings
+
+INFINITE_SKIP_INVALID_PAGE_CHECKS = getattr(settings, 'PAGINATION_INFINITE_SKIP_INVALID_PAGE_CHECKS', False)
 
 class InfinitePaginator(Paginator):
     """
@@ -40,12 +43,14 @@ class InfinitePaginator(Paginator):
         bottom = (number - 1) * self.per_page
         top = bottom + self.per_page
         page_items = self.object_list[bottom:top]
-        # check moved from validate_number
-        if not page_items:
-            if number == 1 and self.allow_empty_first_page:
-                pass
-            else:
-                raise EmptyPage('That page contains no results')
+
+        if not INFINITE_SKIP_INVALID_PAGE_CHECKS:
+            # check moved from validate_number
+            if not page_items:
+                if number == 1 and self.allow_empty_first_page:
+                    pass
+                else:
+                    raise EmptyPage('That page contains no results')
         return InfinitePage(page_items, number, self)
 
     def _get_count(self):
@@ -73,6 +78,10 @@ class InfinitePaginator(Paginator):
 
 class InfinitePage(Page):
 
+    def __init__(self, *args, **kwargs):
+        super(InfinitePage, self).__init__(*args, **kwargs)
+        self.cached_has_next = None
+
     def __repr__(self):
         return '<Page %s>' % self.number
 
@@ -80,11 +89,17 @@ class InfinitePage(Page):
         """
         Checks for one more item than last on this page.
         """
+        if self.cached_has_next is not None:
+            return self.cached_has_next
+
         try:
             next_item = self.paginator.object_list[
                 self.number * self.paginator.per_page]
         except IndexError:
+            self.cached_has_next = False
             return False
+
+        self.cached_has_next = True
         return True
 
     def end_index(self):
@@ -147,7 +162,7 @@ class FinitePaginator(InfinitePaginator):
         """
         number = self.validate_number(number)
         # remove the extra item(s) when creating the page
-        page_items = self.object_list[:self.per_page]
+        page_items = self.object_list.all()[number*self.per_page:(number+1)*self.per_page]
         return FinitePage(page_items, number, self)
 
 class FinitePage(InfinitePage):
